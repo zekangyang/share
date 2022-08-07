@@ -1,0 +1,119 @@
+var NingXia = ee.FeatureCollection("users/YZK/NingXia");
+
+var c1 = ee.Image("users/YZK/NX1990")
+var c2 = ee.Image("users/YZK/NX1995")
+var c3 = ee.Image("users/YZK/NX2000")
+var c4 = ee.Image("users/YZK/NX2005")
+var c5 = ee.Image("users/YZK/NX2010")
+var c6 = ee.Image("users/YZK/NX2015")
+var c7 = ee.Image("users/YZK/NX2020")
+
+ 
+// Calculate changes and generate an image
+var fromClassification = c1
+var toClassification = c7
+var classes = [1, 2, 3, 4, 5] // Class values in your classification. Doesn't have to be consecutive
+
+var changes = c1.multiply(100).add(c7)
+
+
+// ee.ImageCollection(ee.List(
+//   classes.map(function (from, i) {
+//     return classes.map(function (to,  j) {
+//       var changeValue = classes.length * i + j + 1
+//       return fromClassification.eq(from)
+//       .and(toClassification.eq(to))
+//       .multiply(changeValue)
+//       .int8()
+//     })
+//   })
+// ).flatten()).reduce(ee.Reducer.sum())
+print(changes.clip(NingXia))
+// Changes is an image where the pixel values mean the following:
+// 101: From class 1 to class 1
+// 102: From class 1 to class 2
+// 103: From class 1 to class 3
+// 104: From class 1 to class 4
+// 201: From class 2 to class 1
+
+// Display the original classification and changes
+var palette = ['#de2d26','#ffadf5', '#f8fb3c', '#87e7a9','#009f41'];
+Map.centerObject(NingXia, 5)
+Map.addLayer(c1, {min: 1, max: 5, palette: palette}, 'c1')
+// Map.addLayer(c2, {min: 1, max: 5, palette: palette}, 'c2')
+// Map.addLayer(c3, {min: 1, max: 5, palette: palette}, 'c3')
+// Map.addLayer(c4, {min: 1, max: 5, palette: palette}, 'c4')
+// Map.addLayer(c5, {min: 1, max: 5, palette: palette}, 'c5')
+// Map.addLayer(c6, {min: 1, max: 5, palette: palette}, 'c6')
+Map.addLayer(c7, {min: 1, max: 5, palette: palette}, 'c7')
+Map.addLayer(changes.randomVisualizer(), null, 'changes')  //max=25
+
+// Export the changes image
+// Export.image.toDrive({
+//   image: changes.toDouble(),
+//   fileNamePrefix: '90-00changes',
+//   folder: 'NingXiaLUClass',
+//   scale: 1000,
+//   region:NingXia,
+//   crs: 'EPSG: 4326',
+//   maxPixels: 1e13
+// });
+
+//Calculate change areas
+var areaImage = ee.Image.pixelArea().addBands(changes)
+var areas = areaImage.reduceRegion({
+      reducer: ee.Reducer.sum().group({
+      groupField: 1,
+      groupName: 'class',
+    }),
+    geometry: NingXia.geometry(),
+    scale: 1000,
+    maxPixels: 1e13
+    }); 
+print(areaImage)
+print(areas)
+
+var classAreas = ee.List(areas.get('groups'))
+var classAreaLists = classAreas.map(function(item) {
+  var areaDict = ee.Dictionary(item)
+  var classNumber = ee.Number(areaDict.get('class')).format()
+  var area = ee.Number(
+    areaDict.get('sum')).divide(1e6).round()
+  return ee.List([classNumber, area])
+})
+var result = ee.Dictionary(classAreaLists.flatten())
+print(result)
+
+var keys = ee.List(result.keys())
+print("keys", keys)
+var array = ee.FeatureCollection(keys.map(function(key){
+  var key = ee.Number(key);
+  var keystr = ee.String(key.format()) //Convert a number to a string using printf-style formatting.
+  var value = result.get(key)
+  return ee.Feature(null, {"key":key, "value":value})
+}));
+print(array)
+
+// Export to csv
+var testFeature = ee.Feature(null, result)
+print(testFeature)
+var testFeatureCollection = ee.FeatureCollection(testFeature)
+print(testFeatureCollection)
+
+var classes = ee.List.sequence(1, 25)
+var outputFields = ee.List(
+    ['1990 to 2020']).cat(classes).getInfo()
+ 
+Export.table.toDrive({
+    collection: testFeatureCollection,
+    description: 'NingXia',
+    folder: 'NingXia',
+    fileNamePrefix: '1990 to 2020',
+    fileFormat: 'CSV',
+    selectors: outputFields
+    })
+
+
+
+
+
