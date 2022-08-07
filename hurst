@@ -1,0 +1,184 @@
+var huanghe = ee.FeatureCollection("users/vtlcd1079022/huanghe");
+//Add year to each image
+//create a band of year to each image
+//Note that the new added band should be convert to Float
+var c1 = ee.Image("users/vtlcd1079022/normalRSEI/1990").set('year', 1990).addBands(ee.Image(1990).toFloat())
+var c2 = ee.Image("users/vtlcd1079022/normalRSEI/1991").set('year', 1991).addBands(ee.Image(1991).toFloat())
+var c3 = ee.Image("users/vtlcd1079022/normalRSEI/1992").set('year', 1992).addBands(ee.Image(1992).toFloat())
+var c4 = ee.Image("users/vtlcd1079022/normalRSEI/1993").set('year', 1993).addBands(ee.Image(1993).toFloat())
+var c5 = ee.Image("users/vtlcd1079022/normalRSEI/1994").set('year', 1994).addBands(ee.Image(1994).toFloat())
+var c6 = ee.Image("users/vtlcd1079022/normalRSEI/1995").set('year', 1995).addBands(ee.Image(1995).toFloat())
+var c7 = ee.Image("users/vtlcd1079022/normalRSEI/1996").set('year', 1996).addBands(ee.Image(1996).toFloat())
+var c8 = ee.Image("users/vtlcd1079022/normalRSEI/1997").set('year', 1997).addBands(ee.Image(1997).toFloat())
+var c9 = ee.Image("users/vtlcd1079022/normalRSEI/1998").set('year', 1998).addBands(ee.Image(1998).toFloat())
+var c10= ee.Image("users/vtlcd1079022/normalRSEI/1999").set('year', 1999).addBands(ee.Image(1999).toFloat())
+var c11= ee.Image("users/vtlcd1079022/normalRSEI/2000").set('year', 2000).addBands(ee.Image(2000).toFloat())
+var c12= ee.Image("users/vtlcd1079022/normalRSEI/2001").set('year', 2001).addBands(ee.Image(2001).toFloat())
+var c13= ee.Image("users/vtlcd1079022/normalRSEI/2002").set('year', 2002).addBands(ee.Image(2002).toFloat())
+var c14= ee.Image("users/vtlcd1079022/normalRSEI/2003").set('year', 2003).addBands(ee.Image(2003).toFloat())
+var c15= ee.Image("users/vtlcd1079022/normalRSEI/2004").set('year', 2004).addBands(ee.Image(2004).toFloat())
+var c16= ee.Image("users/vtlcd1079022/normalRSEI/2005").set('year', 2005).addBands(ee.Image(2005).toFloat())
+var c17= ee.Image("users/vtlcd1079022/normalRSEI/2006").set('year', 2006).addBands(ee.Image(2006).toFloat())
+var c18= ee.Image("users/vtlcd1079022/normalRSEI/2007").set('year', 2007).addBands(ee.Image(2007).toFloat())
+var c19= ee.Image("users/vtlcd1079022/normalRSEI/2008").set('year', 2008).addBands(ee.Image(2008).toFloat())
+var c20= ee.Image("users/vtlcd1079022/normalRSEI/2009").set('year', 2009).addBands(ee.Image(2009).toFloat())
+var c21= ee.Image("users/vtlcd1079022/normalRSEI/2010").set('year', 2010).addBands(ee.Image(2010).toFloat())
+var c22= ee.Image("users/vtlcd1079022/normalRSEI/2011").set('year', 2011).addBands(ee.Image(2011).toFloat())
+var c23= ee.Image("users/vtlcd1079022/normalRSEI/2012").set('year', 2012).addBands(ee.Image(2012).toFloat())
+var c24= ee.Image("users/vtlcd1079022/normalRSEI/2013").set('year', 2013).addBands(ee.Image(2013).toFloat())
+var c25= ee.Image("users/vtlcd1079022/normalRSEI/2014").set('year', 2014).addBands(ee.Image(2014).toFloat())
+var c26= ee.Image("users/vtlcd1079022/normalRSEI/2015").set('year', 2015).addBands(ee.Image(2015).toFloat())
+var c27= ee.Image("users/vtlcd1079022/normalRSEI/2016").set('year', 2016).addBands(ee.Image(2016).toFloat())
+var c28= ee.Image("users/vtlcd1079022/normalRSEI/2017").set('year', 2017).addBands(ee.Image(2017).toFloat())
+var c29= ee.Image("users/vtlcd1079022/normalRSEI/2018").set('year', 2018).addBands(ee.Image(2018).toFloat())
+var c30= ee.Image("users/vtlcd1079022/normalRSEI/2019").set('year', 2019).addBands(ee.Image(2019).toFloat())
+var c31= ee.Image("users/vtlcd1079022/normalRSEI/2020").set('year', 2020).addBands(ee.Image(2020).toFloat())
+// print(c1)
+// print(c2)
+// print(c3)
+// print(c4)
+// print(c5)
+// print(c6)
+// print(c7)
+
+var collection = ee.ImageCollection([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16,
+c17, c18, c19, c20, c21, c22, c23, c24, c25, c26, c27, c28, c29, c30, c31]);
+
+ print(collection)
+
+/***********************************************************************************************************
+ * 
+ * 
+ * *********************************************************************************************************/
+var dataset=collection.select('normaRESI')
+
+var sub_list_dist=1;
+var sub_list_len=ee.List.sequence(2,dataset.size().divide(2).int(),sub_list_dist);
+function hurst1(time_series,sub_len){
+    var RS_list=sub_len.map(function (dist){
+    var index_seq=ee.List.sequence(0,time_series.size(),dist)
+    var sub_R_S=ee.List.sequence(0,index_seq.size().subtract(2),1).map(function (i){
+      var sub_series=ee.ImageCollection(time_series.toList(time_series.size())
+                        .slice(index_seq.get(ee.Number(i)),index_seq.get(ee.Number(i).add(1))))
+      var sub_series_mean=sub_series.mean()
+    var sub_x_subtract_mean=sub_series.map(function (image){return image.subtract(sub_series_mean)})
+    //Calculate the deviation
+    var first = ee.List([
+    // Rename the first image
+    ee.Image(0)]);
+// This is a function to pass to Iterate().
+// As anomaly images are computed, add them to the list.
+  var accumulate = function(image,list) {
+  // Get the latest cumulative anomaly image from the end of the list with
+  // get(-1).  Since the type of the list argument to the function is unknown,
+  // it needs to be cast to a List.  Since the return type of get() is unknown,
+  // cast it to Image.
+  var previous = ee.Image(ee.List(list).get(-1));
+  // Add the current anomaly to make a new cumulative anomaly image.
+  var added = image.add(previous);
+  // Return the list with the cumulative anomaly inserted.
+    return ee.List(list).add(added);
+    };
+    // Create an ImageCollection of cumulative anomaly images by iterating.
+    // Since the return type of iterate is unknown, it needs to be cast to a List.
+    var cum_deviation = ee.ImageCollection(ee.List(sub_x_subtract_mean.iterate(accumulate, first)).removeAll(first));
+    var range=cum_deviation.max().subtract(cum_deviation.min())
+    var standard_dev=sub_x_subtract_mean.map(function (image){return image.pow(ee.Image(2))})
+                                        .sum().divide(sub_x_subtract_mean.size().subtract(1)).sqrt()
+    var R_S= range.divide(standard_dev).rename('RS').toFloat();
+    return R_S
+    })
+    var R_S_mean=ee.ImageCollection(sub_R_S).mean().set('dist',dist);
+    return R_S_mean
+  })
+  var R_Smean_series=ee.ImageCollection(RS_list)
+  return R_Smean_series;
+}
+var RS=hurst1(dataset,sub_list_len)
+var RS_list=RS.toList(RS.size()); //transfrom List we can loop in i in[1,RS.size()]
+var lnRS_ln_i=ee.ImageCollection(ee.List.sequence(0,RS.size().subtract(1),1).map(function (i){
+  var lnRS_i=ee.Image(RS_list.get(i)).log().rename('ln_RS');
+  var ln_i=ee.Image(ee.Number(sub_list_len.get(i)).log()).rename('ln_r_i').toFloat();
+  return lnRS_i.addBands(ln_i)
+}));
+var hurst=lnRS_ln_i.select(['ln_r_i','ln_RS']).reduce(ee.Reducer.linearFit()).select('scale');
+print('hurst',hurst)
+
+var viz={
+  min:0,
+  max:1,
+  palette:[
+    '040274',
+    '0602ff',
+    '3be285',
+    'fff705',
+    'ff0000'
+    ]
+};
+Map.addLayer(hurst,viz,'hurst')
+
+var chart=ui.Chart.image.histogram(hurst, huanghe, 1000)
+print(chart)
+Export.image.toDrive({
+  image: hurst.clip(huanghe),
+  description: "hurst_huanghe",
+  scale: 1000,
+  region: huanghe.geometry(),
+  maxPixels: 1e13
+});
+
+//computer area
+
+var dict_1 = hurst.select('scale').reduceRegion({
+                    reducer: ee.Reducer.max()
+                              .combine(ee.Reducer.min(), null, true),
+                    geometry: huanghe, 
+                    scale: 90,
+                    maxPixels: 1e15
+                  });
+var max_1=ee.Number(dict_1.values().get(0)).add(0.0001);
+var min_1=ee.Number(dict_1.values().get(1));
+
+ 
+var interval_list_1=[min_1,0.5,0.85,max_1]
+
+//classification
+var area = ee.Image.pixelArea().divide(10000);
+var target_img_1=hurst.select('scale')
+var img_leve_l= hurst.select('scale').multiply(0);
+var list_area_1=ee.List([])
+for(var j=1;j<=3;j++){
+    
+    var upper_num=ee.Number(interval_list_1[j])
+    var lower_num=ee.Number(interval_list_1[j-1])
+    // print(lower_num)
+    // print(upper_num)
+    var mask_i=target_img_1.gte(lower_num).and(target_img_1.lt(upper_num));
+    
+    var one_area_1=img_leve_l.updateMask(mask_i).multiply(0).add(1).multiply(area);
+    var stats =one_area_1.reduceRegion({
+        reducer: ee.Reducer.sum(),
+        geometry: huanghe,
+        scale: 1000,
+        maxPixels: 1e9
+    });
+    print(stats.values().get(0))
+    list_area_1=list_area_1.add(stats.values().get(0));
+    
+    //  leve  
+    img_leve_l=img_leve_l.add(mask_i.multiply(j));
+  }
+ 
+// 
+print('hurst area list',list_area_1)
+
+
+var trendVis_new_1 = {
+  min: 1,
+  max: 3,
+  palette: [
+    '4B0091', '02DF82', 'E1E100', '9F4D95'
+  ],
+};
+Map.addLayer(img_leve_l,trendVis_new_1,'hurst img level',false);
+
