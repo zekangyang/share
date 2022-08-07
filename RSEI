@@ -1,0 +1,326 @@
+
+//unload hh feature
+
+var huanghe = ee.FeatureCollection('users/vtlcd1079022/huanghe');
+
+//Landsat 5 remove cloud
+var cloudMaskL457 = function(image) {
+  var qa = image.select('pixel_qa');
+  // If the cloud bit (5) is set and the cloud confidence (7) is high
+  // or the cloud shadow bit is set (3), then it's a bad pixel.
+  var cloud = qa.bitwiseAnd(1 << 5)
+                  .and(qa.bitwiseAnd(1 << 7))
+                  .or(qa.bitwiseAnd(1 << 3));
+  // Remove edge pixels that don't occur in all bands
+  var mask2 = image.mask().reduce(ee.Reducer.min());
+  return image.updateMask(cloud.not()).updateMask(mask2).multiply(0.0001);
+};
+
+var get_ndvi = function(image){
+  var ndvi=image.normalizedDifference(['B4', 'B3']).rename('NDVI');
+  return ndvi;
+};
+
+//wet
+var get_wet = function(image){
+
+  var wet_tm = image.expression(
+    '0.0315 * p_blue + 0.2021 * p_green + 0.3102 * p_red + 0.1594 * p_nir - 0.6806 * p_swr1 - 0.6109 * p_swr2', {
+      'p_blue': image.select('B1'),
+      'p_green': image.select('B2'),
+      'p_red': image.select('B3'),
+      'p_nir':image.select('B4'),
+      'p_swr1':image.select('B5'),
+      'p_swr2':image.select('B7')
+    });
+  return wet_tm;
+};
+// lst 
+var get_lst = function(image){
+  var t=image.expression('t/(1+((11.435*t)/14380)*log(0.96))',
+        {'t': image.select('B6').multiply(1000).subtract(273.15)});
+    return t.rename('LST');
+  };
+// ndsi 
+var get_ndsi = function(image){
+    var si = image.expression(
+    '((p_swr1 + p_red) - (p_blue + p_nir)) / ((p_swr1 + p_red) + (p_blue + p_nir)) ', {
+      'p_blue': image.select('B1'),
+      'p_red': image.select('B3'),
+      'p_nir':image.select('B4'),
+      'p_swr1':image.select('B5'),
+    });
+    
+   
+    var ibi1 = image.expression(
+    '(2 * p_swr1) / (p_swr1 + p_nir)', {
+      'p_nir':image.select('B4'),
+      'p_swr1':image.select('B5')
+    }).rename('ibi1');
+    var ibi2 = image.expression(
+    '(p_nir / (p_nir + p_red)) + (p_green / (p_green + p_swr1))', {
+      'p_green': image.select('B2'),
+      'p_red': image.select('B3'),
+      'p_nir':image.select('B4'),
+      'p_swr1':image.select('B5')
+    }).rename('ibi2');
+    
+    var ibi=ibi1.addBands(ibi2).normalizedDifference(['ibi1', 'ibi2']);
+    
+    var ndsi=(si.add(ibi)).divide(ee.Image.constant(2));
+    
+    return ndsi;
+};
+//mndwi
+var get_mndwi = function(image){
+  var mndwi = image.expression(
+    '(p_green - p_swr1)/(p_green + p_swr1)',{
+      'p_green': image.select('B2'),
+      'p_swr1':image.select('B5')});
+    return mndwi;
+  };
+
+var add_index = function(image){
+  var ndvi=get_ndvi(image).rename('NDVI');
+  var wet=get_wet(image).rename('WET');
+  var lst=get_lst(image).rename('LST');
+  var ndsi=get_ndsi(image).rename('NDSI');
+  var mndwi=get_mndwi(image).rename('MNDWI');
+  return image.addBands(ndvi).addBands(wet).addBands(lst).addBands(ndsi).addBands(mndwi);
+};
+
+var dataset = ee.ImageCollection('LANDSAT/LT05/C01/T1_SR')
+                  //.filterDate('1989-01-01', '1991-12-31')
+                  .filter(ee.Filter.calendarRange(1989,1991,'year'))
+                  .filter(ee.Filter.calendarRange(6,9,'month'))
+                  .filterBounds(huanghe.geometry())
+                  .map(cloudMaskL457);
+                
+print(dataset);                
+ 
+
+var fina=add_index(dataset.median());
+var water_mask = fina.select('MNDWI').lte(0);
+var fina = fina.updateMask(water_mask);
+
+
+/**********************************************************************  
+          1）regularization
+  **********************************************************************/
+  
+ //  select  bands
+var bands = ['NDVI', 'WET', 'LST', 'NDSI'];
+fina=fina.select(bands).clip(huanghe);
+//print("fina", fina);
+//
+  var dict = fina.reduceRegion({
+      reducer: ee.Reducer.minMax(),
+      geometry: huanghe, 
+      scale: 1000,
+      maxPixels: 1e18,
+      tileScale:16
+  });
+//  print("dict", dict);
+
+function MMS(imgBand, max, min){
+  var diffValue = max.subtract(min);
+  var norma=imgBand.subtract(min).divide(diffValue);
+  return norma;
+}
+
+function NMMS(imgBand, max, min){
+  var diffValue = max.subtract(min);
+  var norma=imgBand.subtract(max).abs().divide(diffValue);
+  return norma;
+}
+
+
+var normaNDVI = MMS  (fina.select(bands[0]), dict.getNumber(bands[0]+"_max"), dict.getNumber(bands[0]+"_min")).rename('normaNDVI');
+var normaWET  = MMS  (fina.select(bands[1]), dict.getNumber(bands[1]+"_max"), dict.getNumber(bands[1]+"_min")).rename('normaWET');
+var normaLST  = MMS (fina.select(bands[2]), dict.getNumber(bands[2]+"_max"), dict.getNumber(bands[2]+"_min")).rename('normaLST');
+var normaNDSI = MMS (fina.select(bands[3]), dict.getNumber(bands[3]+"_max"), dict.getNumber(bands[3]+"_min")).rename('normaNDSI');
+
+var new_ds = ee.Image(normaNDVI).addBands(normaWET).addBands(normaLST).addBands(normaNDSI);
+
+// print("new_ds", new_ds, new_ds.reduceRegion({
+//                     reducer: ee.Reducer.minMax(),
+//                     geometry: huanghe, 
+//                     scale: 1000,
+//                     maxPixels: 1e18,
+//                     tileScale:16
+//                 })
+//       );
+
+
+/**********************************************************************  
+        2）PCA
+**********************************************************************/
+var meanDict = new_ds.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: huanghe,
+    scale: 1000,
+    maxPixels: 1e18,
+    tileScale:16
+});
+
+//print('meanDict',meanDict)
+var means = ee.Image.constant(meanDict.values(['normaNDVI','normaWET','normaLST','normaNDSI']));
+//print('means',means)
+var centered = new_ds.subtract(means);
+//print('centered',centered)
+
+var arrays = centered.toArray();
+// Compute the covariance of the bands within the region.
+var covar = arrays.reduceRegion({
+  reducer: ee.Reducer.centeredCovariance(),
+  geometry:huanghe,
+  scale: 1000,
+  maxPixels: 1e18,
+  tileScale:16
+});
+
+// Get the 'array' covariance result and cast to an array.
+// This represents the band-to-band covariance within the region.
+var covarArray = ee.Array(covar.get('array'));
+
+// Perform an eigen analysis and slice apart the values and vectors.
+var eigens = covarArray.eigen();
+print('eigens',eigens)
+// This is a P-length vector of Eigenvalues.
+var eigenValues = eigens.slice(1, 0, 1);
+// This is a PxP matrix with eigenvectors in rows.
+print('eigenValues',eigenValues)
+var eigenVectors = eigens.slice(1, 1);
+print('eigenVectors',eigenVectors)
+// Convert the array image to 2D arrays for matrix computations.
+var arrayImage = arrays.toArray(1);
+
+// Left multiply the image array by the matrix of eigenvectors.
+var principalComponents = ee.Image(eigenVectors).matrixMultiply(arrayImage);
+// Turn the square roots of the Eigenvalues into a P-band image.
+
+
+// Turn the PCs into a P-band image, normalized by SD.
+var PCs = principalComponents
+                            // Throw out an an unneeded dimension, [[]] -> [].
+                            .arrayProject([0])
+                            // Make the one band array image a multi-band image, [] -> image.
+                            .arrayFlatten([['pc1', 'pc2', 'pc3', 'pc4']])
+                            
+//print("PCs",PCs)
+
+/**********************************************************************  
+        3）RSEI
+**********************************************************************/
+
+var pc1 = PCs.select(['pc1']);
+
+var resi_1 = pc1.rename('RESI');
+//print('resi_1',resi_1);
+var dict_2 = resi_1.reduceRegion({
+                    reducer: ee.Reducer.minMax(),
+                    geometry: huanghe, 
+                    scale: 1000,
+                    maxPixels: 1e18,
+                    tileScale:16
+});
+//print('dict_2',dict_2);
+
+
+var normaRESI = NMMS  (resi_1.select([0]), dict_2.getNumber('RESI_max'), dict_2.getNumber('RESI_min')).rename('normaRESI');
+print("normaRESI", normaRESI,  normaRESI.reduceRegion({
+                    reducer: ee.Reducer.minMax(),
+                    geometry: huanghe, 
+                    scale: 1000,
+                    maxPixels: 1e18,
+                    tileScale:16
+                })
+      )
+print('normaRESI',normaRESI)
+
+Map.addLayer(huanghe,null,'huanghe');
+
+
+Export.image.toAsset({
+  image: normaRESI,
+  description: 'normalRSEI',
+  assetId: 'users/YZK/2010',
+  scale: 1000,
+  region:huanghe,
+  crs: 'EPSG: 4326',
+  maxPixels: 1e13
+});
+// var resi_class = normaRESI.expression(
+//     "(b('normaRESI') > 0.8) ? 5" +
+//       ": (b('normaRESI') > 0.6) ? 4" +
+//         ": (b('normaRESI') > 0.4) ? 3" +
+//           ": (b('normaRESI') > 0.2) ? 2" +
+//                       ": 1"
+// );
+// var palette = ['#de2d26','#ffadf5', '#f8fb3c', '#87e7a9','#009f41'];
+// var resi_class = resi_class.clip(huanghe).updateMask(water_mask);
+
+// Map.addLayer(resi_class,
+//             {min: 1, max: 5, palette: palette},
+//             'resi_class');
+    
+
+// //Area
+// var AreaImage = resi_class.eq(1).multiply(ee.Image.pixelArea());
+// var area_1 = AreaImage.reduceRegion({
+//     reducer: ee.Reducer.sum(),
+//     geometry: huanghe,
+//     scale: 1000,
+//     maxPixels: 1e18,
+//     tileScale:16});
+
+// print('Area_1:m2:',area_1);
+
+// var AreaImage = resi_class.eq(2).multiply(ee.Image.pixelArea());
+// var area_2 = AreaImage.reduceRegion({
+//     reducer: ee.Reducer.sum(),
+//     geometry: huanghe,
+//     scale: 1000,
+//     maxPixels: 1e18,
+//     tileScale:16});
+
+// print('Area_2:m2:',area_2);
+
+// var AreaImage = resi_class.eq(3).multiply(ee.Image.pixelArea());
+// var area_3 = AreaImage.reduceRegion({
+//     reducer: ee.Reducer.sum(),
+//     geometry: huanghe,
+//     scale: 1000,
+//     maxPixels: 1e18,
+//     tileScale:16});
+
+// print('Area_3m2:',area_3);
+
+// var AreaImage = resi_class.eq(4).multiply(ee.Image.pixelArea());
+// var area_4 = AreaImage.reduceRegion({
+//     reducer: ee.Reducer.sum(),
+//     geometry: huanghe,
+//     scale: 1000,
+//     maxPixels: 1e18,
+//     tileScale:16});
+
+// print('Area_4:m2:',area_4);
+
+// var AreaImage = resi_class.eq(5).multiply(ee.Image.pixelArea());
+// var area_5 = AreaImage.reduceRegion({
+//     reducer: ee.Reducer.sum(),
+//     geometry: huanghe,
+//     scale: 1000,
+//     maxPixels: 1e18,
+//     tileScale:16});
+
+// print('Area_5:m2:',area_5);
+  
+// var mean = normaRESI.reduceRegion({
+//                     reducer: ee.Reducer.mean(),
+//                     geometry: huanghe, 
+//                     scale: 1000,
+//                     maxPixels: 1e13,
+//                     tileScale:16
+//                 }).getNumber('normaRESI')
+// print(' 平均值 :',mean); 
