@@ -1,0 +1,109 @@
+var huanghe = ee.FeatureCollection("users/vtlcd1079022/huanghe");
+//Add year to each image
+//create a band of year to each imag
+//Note that the new added band should be convert to Float//
+var c1 = ee.Image("users/vtlcd1079022/normalRSEI/1990").set('year', 1990).addBands(ee.Image(1990).toFloat())
+var c2 = ee.Image("users/vtlcd1079022/normalRSEI/1995").set('year', 1995).addBands(ee.Image(1995).toFloat())
+var c3 = ee.Image("users/vtlcd1079022/normalRSEI/2000").set('year', 2000).addBands(ee.Image(2000).toFloat())
+var c4 = ee.Image("users/vtlcd1079022/normalRSEI/2005").set('year', 2005).addBands(ee.Image(2005).toFloat())
+var c5 = ee.Image("users/vtlcd1079022/normalRSEI/2010").set('year', 2010).addBands(ee.Image(2010).toFloat())
+var c6 = ee.Image("users/vtlcd1079022/normalRSEI/2015").set('year', 2015).addBands(ee.Image(2015).toFloat())
+var c7 = ee.Image("users/vtlcd1079022/normalRSEI/2020").set('year', 2020).addBands(ee.Image(2020).toFloat())
+// print(c1)
+// print(c2)
+// print(c3)
+// print(c4)
+// print(c5)
+// print(c6)
+// print(c7)
+
+var collection = ee.ImageCollection([c1, c2, c3, c4, c5, c6, c7]);
+print(collection)
+
+//LinearFit between year and class
+var linearFit = collection.select(['constant', 'normaRESI'])
+  .reduce(ee.Reducer.linearFit());
+print(linearFit)
+ 
+var trendVis = {
+  min: -0.01,
+  max: 0.01,
+  palette: [
+    '040274', '040281', '0502a3', '0502b8', '0502ce', '0502e6',
+    '0602ff', '235cb1', '307ef3', '269db1', '30c8e2', '32d3ef',
+    '3be285', '3ff38f', '86e26f', '3ae237', 'b5e22e', 'd6e21f',
+    'fff705', 'ffd611', 'ffb613', 'ff8b13', 'ff6e08', 'ff500d',
+    'ff0000', 'de0101', 'c21301', 'a71001', '911003'
+  ],
+};
+Map.centerObject(huanghe, 5);
+Map.addLayer(linearFit.select('scale').multiply(5),trendVis);
+
+
+Export.image.toDrive({
+  image:  linearFit.select('scale').multiply(5),
+  description: 'qushimianji',
+  scale: 1000,
+  region:huanghe,
+  crs: 'EPSG: 4326',
+  maxPixels: 1e13,
+});
+
+var dict = linearFit.select('scale').reduceRegion({
+                    reducer: ee.Reducer.max()
+                              .combine(ee.Reducer.min(), null, true),
+                    geometry: huanghe, 
+                    scale: 90,
+                    maxPixels: 1e15
+                  });
+var max=ee.Number(dict.values().get(0)).add(0.0001);
+var min=ee.Number(dict.values().get(1));
+
+//divide the interval//
+print('min',min)
+print('max',max)
+ 
+var interval_list=[min,-0.005,0,0.001,0.008,max]
+
+//classification
+var area = ee.Image.pixelArea().divide(10000);
+var target_img=linearFit.select('scale')
+var img_level= linearFit.select('scale').multiply(0);
+var list_area=ee.List([])
+for(var j=1;j<=5;j++){
+    
+    var upper_num=ee.Number(interval_list[j])
+    var lower_num=ee.Number(interval_list[j-1])
+    print("=======")
+    print(lower_num)
+    print(upper_num)
+    var mask_i=target_img.gte(lower_num).and(target_img.lt(upper_num));
+    
+    var one_area=img_level.updateMask(mask_i).multiply(0).add(1).multiply(area);
+    var stats = one_area.reduceRegion({
+        reducer: ee.Reducer.sum(),
+        geometry: huanghe,
+        scale: 90,
+        maxPixels: 1e9
+    });
+    list_area=list_area.add(stats.values().get(0));
+    
+ //  
+    img_level=img_level.add(mask_i.multiply(ee.Number(j)));
+    
+    
+    
+  }
+
+// plot
+print('area list',list_area)
+var trendVis_new = {
+  min: 1,
+  max: 5,
+  palette: [
+    '4B0091', '02DF82', 'E1E100', '9F4D95', 'F75000'
+  ],
+};
+Map.centerObject(huanghe, 5);
+Map.addLayer(img_level,trendVis_new,'img_level');
+
